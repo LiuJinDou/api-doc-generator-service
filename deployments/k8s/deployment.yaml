@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-doc-generator
+  labels:
+    app: api-doc-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-doc-generator
+  template:
+    metadata:
+      labels:
+        app: api-doc-generator
+    spec:
+      containers:
+      - name: api-doc-generator
+        image: api-doc-generator:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SERVER_PORT
+          value: "8080"
+        - name: GIT_WORK_DIR
+          value: "/tmp/repos"
+        - name: APIFOX_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: api-doc-generator-secrets
+              key: apifox-token
+        - name: APIFOX_PROJECT_ID
+          valueFrom:
+            secretKeyRef:
+              name: api-doc-generator-secrets
+              key: apifox-project-id
+        - name: WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: api-doc-generator-secrets
+              key: webhook-secret
+              optional: true
+        volumeMounts:
+        - name: repos
+          mountPath: /tmp/repos
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: repos
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-doc-generator
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: api-doc-generator

@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  api-doc-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api-doc-generator
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_PORT=8080
+      - GIT_WORK_DIR=/tmp/repos
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      - APIFOX_TOKEN=${APIFOX_TOKEN}
+      - APIFOX_PROJECT_ID=${APIFOX_PROJECT_ID}
+      - APIFOX_BASE_URL=${APIFOX_BASE_URL:-https://api.apifox.cn}
+      - STORAGE_ENABLED=false
+    volumes:
+      - repos:/tmp/repos
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  repos:
+    driver: local
