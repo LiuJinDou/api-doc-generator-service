@@ -17,7 +17,6 @@ vendor/
 
 # Go workspace file
 go.work
-
 # Environment variables
 .env
 
@@ -31,6 +30,10 @@ go.work
 # Temporary files
 /tmp/
 *.log
+.temp/
+
+# Documentation and logs
+docs/
 
 # Cloned repositories
 /repos/
@@ -41,3 +44,4 @@ go.work
 # Build artifacts
 build/
 dist/
+bin

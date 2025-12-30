@@ -2,15 +2,20 @@ package openapi
 
 // Spec represents an OpenAPI 3.0 specification
 type Spec struct {
-	OpenAPI string              `json:"openapi"`
-	Info    Info                `json:"info"`
-	Paths   map[string]PathItem `json:"paths"`
+	OpenAPI    string              `json:"openapi"`
+	Info       Info                `json:"info"`
+	Paths      map[string]PathItem `json:"paths"`
+	Components *Components         `json:"components,omitempty"`
 }
 
 type Info struct {
 	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
 	Version     string `json:"version"`
+}
+
+type Components struct {
+	Schemas map[string]Schema `json:"schemas,omitempty"`
 }
 
 type PathItem struct {
@@ -56,10 +61,14 @@ type Response struct {
 }
 
 type Schema struct {
-	Type       string            `json:"type,omitempty"`
-	Properties map[string]Schema `json:"properties,omitempty"`
-	Items      *Schema           `json:"items,omitempty"`
-	Ref        string            `json:"$ref,omitempty"`
+	Type                 string            `json:"type,omitempty"`
+	Format               string            `json:"format,omitempty"`
+	Description          string            `json:"description,omitempty"`
+	Properties           map[string]Schema `json:"properties,omitempty"`
+	Required             []string          `json:"required,omitempty"`
+	Items                *Schema           `json:"items,omitempty"`
+	Ref                  string            `json:"$ref,omitempty"`
+	AdditionalProperties *Schema           `json:"additionalProperties,omitempty"`
 }
 
 // NewSpec creates a new OpenAPI specification
@@ -71,6 +80,9 @@ func NewSpec() *Spec {
 			Version: "1.0.0",
 		},
 		Paths: make(map[string]PathItem),
+		Components: &Components{
+			Schemas: make(map[string]Schema),
+		},
 	}
 }
 
@@ -99,4 +111,14 @@ func (s *Spec) AddPath(path, method string, operation *Operation) {
 	}
 
 	s.Paths[path] = pathItem
+}
+
+// AddSchema adds a schema definition to the components section
+func (s *Spec) AddSchema(name string, schema Schema) {
+	if s.Components == nil {
+		s.Components = &Components{
+			Schemas: make(map[string]Schema),
+		}
+	}
+	s.Components.Schemas[name] = schema
 }

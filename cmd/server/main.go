@@ -11,7 +11,7 @@ import (
 
 	"api-doc-generator/internal/config"
 	"api-doc-generator/internal/parser"
-	"api-doc-generator/internal/parser/gin"
+	ginparser "api-doc-generator/internal/parser/gin"
 	"api-doc-generator/internal/webhook"
 
 	"github.com/gin-gonic/gin"
@@ -26,7 +26,7 @@ func main() {
 
 	// Initialize parser registry
 	parserRegistry := parser.NewRegistry()
-	parserRegistry.Register("go-gin", gin.NewGinParser())
+	parserRegistry.Register("go-gin", ginparser.NewGinParser())
 	// Future parsers can be registered here:
 	// parserRegistry.Register("node-express", express.NewExpressParser())
 	// parserRegistry.Register("python-fastapi", fastapi.NewFastAPIParser())
@@ -56,11 +56,14 @@ func main() {
 	// Info endpoint
 	r.GET("/api/v1/info", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"service":          "API Documentation Generator",
-			"version":          "1.0.0",
+			"service":           "API Documentation Generator",
+			"version":           "1.0.0",
 			"supported_parsers": parserRegistry.List(),
 		})
 	})
+
+	// 静态文件服务 - 让docs目录可以被外部访问
+	r.Static("/docs", "./docs")
 
 	// Graceful shutdown
 	srv := &http.Server{

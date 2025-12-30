@@ -180,7 +180,7 @@ func (h *Handler) processRepository(cloneURL, repoName string, commits interface
 		return
 	}
 
-	syncer := sync.NewApifoxSyncer(h.cfg.Apifox)
+	syncer := sync.NewApifoxSyncer(&h.cfg.Apifox, &h.cfg.Server)
 	commitMsg := extractCommitMessage(commits)
 
 	log.Printf("📤 Syncing to Apifox...")
