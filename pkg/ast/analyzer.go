@@ -23,33 +23,34 @@ type RouteInfo struct {
 // ExtractGinRoutes extracts Gin route definitions from AST
 func ExtractGinRoutes(node *ast.File) []RouteInfo {
 	var routes []RouteInfo
-	groupPrefixes := make(map[string]string) // Track router variable to prefix mapping
 
-	// First pass: find route groups
+	// Analyze each function declaration separately to maintain local scope
 	ast.Inspect(node, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
+		// Look for function declarations (including methods)
+		funcDecl, ok := n.(*ast.FuncDecl)
 		if !ok {
 			return true
 		}
 
-		// Look for r.Group("/prefix") patterns
-		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-			if sel.Sel.Name == "Group" && len(call.Args) > 0 {
-				if pathLit, ok := call.Args[0].(*ast.BasicLit); ok && pathLit.Kind == token.STRING {
-					prefix := strings.Trim(pathLit.Value, `"`)
-					// Try to find the variable this is assigned to
-					// This is a simplified approach - could be enhanced
-					groupPrefixes["v1"] = prefix // Common pattern
-					groupPrefixes["products"] = prefix
-				}
-			}
+		// Extract routes from this function's body
+		if funcDecl.Body != nil {
+			funcRoutes := extractRoutesFromFunc(funcDecl)
+			routes = append(routes, funcRoutes...)
 		}
 
 		return true
 	})
 
-	// Second pass: extract routes with group context
-	ast.Inspect(node, func(n ast.Node) bool {
+	return routes
+}
+
+// extractRoutesFromFunc extracts routes from a single function's scope
+func extractRoutesFromFunc(funcDecl *ast.FuncDecl) []RouteInfo {
+	var routes []RouteInfo
+	groupPrefixes := make(map[string]string) // Local scope for this function
+
+	// Traverse the function body to find route groups and route definitions
+	ast.Inspect(funcDecl.Body, func(n ast.Node) bool {
 		// Track assignment statements for route groups
 		if assign, ok := n.(*ast.AssignStmt); ok {
 			for i, lhs := range assign.Lhs {
@@ -60,12 +61,13 @@ func ExtractGinRoutes(node *ast.File) []RouteInfo {
 								if pathLit, ok := call.Args[0].(*ast.BasicLit); ok {
 									newPrefix := strings.Trim(pathLit.Value, `"`)
 
-									// Check if this is a nested group (v1.Group or products.Group)
+									// Check if this is a nested group (engine.Group or v1.Group)
 									if selIdent, ok := sel.X.(*ast.Ident); ok {
 										parentPrefix := groupPrefixes[selIdent.Name]
 										// Concatenate parent prefix with new prefix
 										groupPrefixes[ident.Name] = parentPrefix + newPrefix
 									} else {
+										// Direct engine.Group() call
 										groupPrefixes[ident.Name] = newPrefix
 									}
 								}
@@ -198,16 +200,29 @@ func (r *RouteInfo) ToOperation() *openapi.Operation {
 		}
 	}
 
-	// Response schema
-	var responseSchema openapi.Schema
+	// Success response - wrap in common response structure
+	var dataSchema openapi.Schema
 	if r.ResponseType != "" {
-		// Use schema reference if we know the type
-		responseSchema = openapi.Schema{
-			Ref: "#/components/schemas/" + r.ResponseType,
-		}
+		dataSchema = buildDataSchema(r.ResponseType)
 	} else {
 		// Fallback to generic object
-		responseSchema = openapi.Schema{Type: "object"}
+		dataSchema = openapi.Schema{Type: "object"}
+	}
+	
+	// Create wrapped response schema
+	responseSchema := openapi.Schema{
+		Type: "object",
+		Properties: map[string]openapi.Schema{
+			"code": {
+				Type:        "integer",
+				Description: "响应状态码，0表示成功",
+			},
+			"message": {
+				Type:        "string",
+				Description: "响应消息",
+			},
+			"data": dataSchema,
+		},
 	}
 
 	// Success response
@@ -241,14 +256,21 @@ func extractTags(path string) []string {
 	// Extract meaningful resource name from path
 	// /api/v1/products -> ["Products"]
 	// /api/v1/products/{id} -> ["Products"]
+	// /imagine_hub/home/picture/search -> ["Home"]
 	// /health -> ["Health"]
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 
-	// Skip common prefixes like api, v1, v2, etc.
+	// Skip common prefixes like api, v1, v2, imagine_hub, etc.
 	var resourcePart string
+	skipPrefixes := map[string]bool{
+		"api": true,
+		"imagine_hub": true,
+		"app": true,
+	}
+	
 	for _, part := range parts {
-		// Skip version patterns and "api" prefix
-		if part == "api" || regexp.MustCompile(`^v\d+$`).MatchString(part) {
+		// Skip version patterns (v1, v2, etc.) and known prefixes
+		if skipPrefixes[part] || regexp.MustCompile(`^v\d+$`).MatchString(part) {
 			continue
 		}
 		// Skip path parameters
@@ -280,4 +302,38 @@ func extractPathParameters(path string) []openapi.Parameter {
 	}
 
 	return params
+}
+
+// buildDataSchema 根据类型名称构建 Schema
+func buildDataSchema(typeName string) openapi.Schema {
+	// 处理数组类型 []Type
+	if strings.HasPrefix(typeName, "[]") {
+		elementType := strings.TrimPrefix(typeName, "[]")
+		return openapi.Schema{
+			Type: "array",
+			Items: &openapi.Schema{
+				Ref: "#/components/schemas/" + elementType,
+			},
+		}
+	}
+	
+	// 处理 map 类型
+	if strings.HasPrefix(typeName, "map[") {
+		return openapi.Schema{
+			Type: "object",
+			AdditionalProperties: &openapi.Schema{
+				Type: "object",
+			},
+		}
+	}
+	
+	// 处理 interface{} 类型
+	if typeName == "interface{}" {
+		return openapi.Schema{Type: "object"}
+	}
+	
+	// 普通类型，使用引用
+	return openapi.Schema{
+		Ref: "#/components/schemas/" + typeName,
+	}
 }
